@@ -8,34 +8,31 @@ namespace PGSessions;
 class PGSessions implements \SessionHandlerInterface
 {
 
-    private $db = NULL;
+    private $db;
 
     /**
     *
-    * Opens connection to database via PDO (Recommended method to connect and Query Databases in PHP)
-    * @return \PDO Object if connected else NULL type
+    * PGSessions constructor.
+    * @param $database : Provide your existing DATABASE Connected PDO Object.
+    * Basically, Dependency Injection. Script EXITS if the $database provided is NOT PDO. So ensure it is.
     *
     */
 
-    final private function connectDB()
+    public function __construct(\PDO $database)
     {
-        try
+        $this->db = NULL;
+        if(($database instanceof \PDO))
         {
-            $connection_options = array(
-                \PDO::ATTR_TIMEOUT => 1,
-                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                \PDO::ATTR_PERSISTENT => true,
-                \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
-                \PDO::ATTR_EMULATE_PREPARES => false);
-            $db_connector = new \PDO('pgsql:port=' .PG_PORT. ';host=' .PG_HOST. ';dbname=' .PG_DB, PG_USER, PG_PASSWD, $connection_options);
-            return $db_connector;
+            $this->db = $database;
         }
-        catch(\PDOException $error)
+        else
         {
-            error_log($error);
-            //Show a nice decent Database Connection Error page
-            //without the details of database host, username and the password
-            exit;
+            die('Passed database instance is NOT of the type required. Exiting');
+        }
+        if(!defined('SESSION_DURATION'))
+        {
+            define('SESSION_DURATION',86400);
+            //Make Sessions valid for 1 day be default
         }
     }
 
@@ -51,26 +48,27 @@ class PGSessions implements \SessionHandlerInterface
 
     public function open($savePath=NULL, $sessionName=NULL)
     {
-        $this->db = $this->connectDB();
         return true;
     }
 
     /**
     *
-    * Close connections to database and return
+    * We could and should connections to database here in close() and return, BUT, we would be using this connection to database further, so best to keep it as it is.
     * @return bool
     *
     */
 
     public function close()
     {
-        $this->db = NULL;
         return true;
     }
 
     /**
     *
     * $session_id is passed by PHP and we fetch the "data" from database for that row and return if we find the row else, return empty string, as per Interface.
+    *
+    * Official PHP Documentation: The read callback must always return a session encoded (serialized) string or an empty string if there is no data to read.
+    *
     * @param string $session_id
     * @return string
     *
@@ -78,12 +76,6 @@ class PGSessions implements \SessionHandlerInterface
 
     public function read($session_id)
     {
-        //The read callback must always return a session encoded (serialized) string
-        //or an empty string if there is no data to read.
-        if(empty($this->db))
-        {
-            $this->db = $this->connectDB();
-        }
         try
         {
             $statement = $this->db->prepare('SELECT "data" FROM "sessions" WHERE "sessions"."id"=:session_id');
@@ -119,10 +111,6 @@ class PGSessions implements \SessionHandlerInterface
 
     public function write($session_id, $data)
     {
-        if(empty($this->db))
-        {
-            $this->db = $this->connectDB();
-        }
         try
         {
             $current_time = time();
@@ -161,10 +149,6 @@ ON CONFLICT(id) DO UPDATE SET "data"=:data,"last_updated"=:last_updated,"expiry"
 
     public function destroy($session_id)
     {
-        if(empty($this->db))
-        {
-            $this->db = $this->connectDB();
-        }
         try
         {
             $statement = $this->db->prepare('DELETE from "sessions" WHERE  "sessions"."id" = :session_id');
@@ -197,10 +181,6 @@ ON CONFLICT(id) DO UPDATE SET "data"=:data,"last_updated"=:last_updated,"expiry"
 
     public function gc($maxlifetime=SESSION_DURATION)
     {
-        if(empty($this->db))
-        {
-            $this->db = $this->connectDB();
-        }
         try
         {
             $current_time = time();
